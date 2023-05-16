@@ -1,27 +1,27 @@
 ### Measure Load for SHs and IDXs
 This search will display the 90th percentile for the average normalized load on defined hosts Adjust host and group as needed
 ```
-index=_introspection component=Hostwide host IN (sh-*, idx-*) 
+index=_introspection component=Hostwide host IN (<splunk_sh>*, <splunk_idx>*) 
 | eval group = if(match(host, "^sh-"), "SH", "IDX") 
 | timechart span=1h p90(data.normalized_load_avg_1min) by group
 ```
 ### Measure scheduler's execution intervals
 This search will display how balanced the load of the scheduled searches are executed
 ```
-index=_audit action=search info=granted provenance=scheduler host=*sh* | timechart span=10s count
+index=_audit action=search info=granted provenance=scheduler host=<splunk_sh> | timechart span=10s count
 | eval second = strftime(_time, "%S"), minute = strftime(_time, "%M")
 | class = case(second=0 AND minute%5=0, "5m", second=0, "1m", true(), "")
 | count_{class} = count | fields - class count second minute
 ```
 ### Measure overlapping timeranges
 Are time windows overlapping with schedules?
-```| rest splunk_server=local servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0"
+```| rest splunk_server=<splunk_sh> servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0"
        f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time
 | stats count by cron_schedule dispatch.earliest_time dispatch.latest_time
 ```
 ### Find scheduled searches using All Time
 ```
-| rest splunk_server=<search_head> /servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0" f=title f=author f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time f=eai:acl* f=updated f=qualifiedSearch f=next_scheduled_time f=splunk_server 
+| rest splunk_server=<splunk_sh> /servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0" f=title f=author f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time f=eai:acl* f=updated f=qualifiedSearch f=next_scheduled_time f=splunk_server 
 | search (dispatch.earliest_time="" OR dispatch.earliest_time="0")
 |stats values(author) as author values(cron_schedule) as cron_schedule values(dispatch.earliest_time) as earliest_time values(dispatch.latest_time) as latest_time values(eai:acl.owner) as owner values(updated) as updated values(qualifiedSearch) as qualifiedSearch values(next_scheduled_time) as next_scheduled_time values(splunk_server) as splunk_server by title eai:acl.app
 |rename eai:acl.app as app| regex qualifiedSearch="^\s*(search|tstats) " 
@@ -85,7 +85,7 @@ Are time windows overlapping with schedules?
 ### Search load
 Gauge how your search load is distributed over various search types
 ```
-index=_audit host=*sh* action=search info=completed
+index=_audit host=<splunk_sh> action=search info=completed
 | rex field=provenance "^(?<provenance_group>[^:]+(:[^:]+)?)"
 | stats dc(app) as apps dc(user) as users count as searches sum(total_run_time) as seconds by provenance_group
 | addinfo | eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) | fields - info_* 
@@ -99,7 +99,40 @@ index=_internal sourcetype=scheduler savedsearch_name="_ACCELERATE_DM_*"
 ### Unused DM
 Size & access information for accelerations
 ```
-| rest splunk_server=local /services/admin/summarization by_tstats=1 
+| rest splunk_server=<splunk_sh> /services/admin/summarization by_tstats=1 
 | eval summary.access_time = strftime('summary.access_time', "%F %T")
 | table title summary.access_count summary.access_time summary.size
+```
+### Expensive dashboards
+Check resource consumption of dashboards
+```
+index=_audit host=<splunk_sh> action=search info=completed
+| stats dc(app) as apps dc(user) as users count as searches sum(total_run_time) as seconds by provenance
+| addinfo | eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) | fields - info_*
+| sort - seconds
+```
+### Dashboard concurrency issues
+Find dashboards that are running too many searches
+```
+index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host=<splunk_sh>
+| rex field=id "(?<ssuser>[^_]+)__" 
+| eval user = coalesce(user, username, ssuser), search_id = coalesce(savedsearch_id, id, "null")
+| stats count as total_occurrences values(reason) as reason values(search_type) as search_type values(provenance) as provenance by host user search_id 
+| where isnotnull(provenance) 
+| stats values(search_id) as search_ids sum(total_occurrences) as total_occurrences values(reason) as reason by host user provenance
+```
+### Dashboards for Post-Processing
+Find dashboards that could benefit from post-processing and base searches
+```
+|rest splunk_server=<splunk_sh> servicesNS/-/-/data/ui/views f=eai:data f=title f=eai:appName
+|fields title eai:appName eai:data splunk_server author
+|search eai:data="*<search>*"
+|xpath outfield=base_id "//search/@id" field=eai:data
+|xpath outfield=query "//query" field=eai:data
+|rex field=query "\|?(?<generating_spl>[^\|]+)(\||.*)"
+|eval total_query=mvcount(generating_spl)
+|eval dc_query=mvdedup(generating_spl)
+|eval distinct_query=mvcount(dc_query)
+|stats values(total_query) as total_query values(distinct_query) as query_count values(base_id) as base_id list(generating_spl) as generating_spl by title eai:appName author splunk_server
+|where total_query!=query_count
 ```
