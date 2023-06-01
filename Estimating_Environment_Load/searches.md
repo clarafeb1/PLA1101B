@@ -1,14 +1,15 @@
 ### Measure Load for SHs and IDXs
 This search will display the 90th percentile for the average normalized load on defined hosts Adjust host and group as needed
 ```
-index=_introspection component=Hostwide host IN (<splunk_sh>*, <splunk_idx>*) 
+index=_introspection component=Hostwide host IN (<splunk_sh>*, <splunk_idx>*) earliest=-7d
 | eval group = if(match(host, "^sh-"), "SH", "IDX") 
 | timechart span=1h p90(data.normalized_load_avg_1min) by group
 ```
 ### Measure scheduler's execution intervals
 This search will display how balanced the load of the scheduled searches are executed
 ```
-index=_audit action=search info=granted provenance=scheduler host=<splunk_sh> | timechart span=10s count
+index=_audit action=search info=granted provenance=scheduler host=<splunk_sh> earliest=-7d
+| timechart span=10s count
 | eval second = strftime(_time, "%S"), minute = strftime(_time, "%M")
 | class = case(second=0 AND minute%5=0, "5m", second=0, "1m", true(), "")
 | count_{class} = count | fields - class count second minute
@@ -77,7 +78,7 @@ Are time windows overlapping with schedules?
 ```
 ### High memory or Long Running searches
 ```
-(index=_audit sourcetype=audittrail (total_run_time=* OR search=*)) OR (index=_introspection data.search_props.sid::* sourcetype=splunk_resource_usage) host=<splunk_sh>
+(index=_audit sourcetype=audittrail (total_run_time=* OR search=*)) OR (index=_introspection data.search_props.sid::* sourcetype=splunk_resource_usage) host=<splunk_sh> earliest=-7d
 | eval mem_used=round('data.mem_used',2), search_id=coalesce('data.search_props.sid',search_id)
 | stats values(savedsearch_name) as search_name values(data.search_props.provenance) as provenance values(data.search_props.app) as app first(host) as host values(user) as user latest(info) as job_status max(mem_used) as "mem_used_mb" values(search) as raw_search values(total_run_time) as total_run_time values(api_et) as timepicker_start values(api_lt) as timepicker_end values(scan_count) as scan_count by search_id
 |convert ctime(timepicker_start) ctime(timepicker_end)|search total_run_time>600 OR mem_used_mb>4000
@@ -85,7 +86,7 @@ Are time windows overlapping with schedules?
 ### Search load
 Gauge how your search load is distributed over various search types
 ```
-index=_audit host=<splunk_sh> action=search info=completed
+index=_audit host=<splunk_sh> action=search info=completed earliest=-7d
 | rex field=provenance "^(?<provenance_group>[^:]+(:[^:]+)?)"
 | stats dc(app) as apps dc(user) as users count as searches sum(total_run_time) as seconds by provenance_group
 | addinfo | eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) | fields - info_* 
@@ -93,7 +94,7 @@ index=_audit host=<splunk_sh> action=search info=completed
 ```
 ### Multiple SHs accelerating the same DM
 ```
-index=_internal sourcetype=scheduler savedsearch_name="_ACCELERATE_DM_*" 
+index=_internal sourcetype=scheduler savedsearch_name="_ACCELERATE_DM_*" earliest=-7d
 | stats values(host) as SHs by savedsearch_name
 ```
 ### Unused DM
@@ -106,7 +107,7 @@ Size & access information for accelerations
 ### Expensive dashboards
 Check resource consumption of dashboards
 ```
-index=_audit host=<splunk_sh> action=search info=completed
+index=_audit host=<splunk_sh> action=search info=completed earliest=-7d
 | stats dc(app) as apps dc(user) as users count as searches sum(total_run_time) as seconds by provenance
 | addinfo | eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) | fields - info_*
 | sort - seconds
@@ -114,7 +115,7 @@ index=_audit host=<splunk_sh> action=search info=completed
 ### Dashboard concurrency issues
 Find dashboards that are running too many searches
 ```
-index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host=<splunk_sh>
+index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host=<splunk_sh> earliest=-7d
 | rex field=id "(?<ssuser>[^_]+)__" 
 | eval user = coalesce(user, username, ssuser), search_id = coalesce(savedsearch_id, id, "null")
 | stats count as total_occurrences values(reason) as reason values(search_type) as search_type values(provenance) as provenance by host user search_id 
