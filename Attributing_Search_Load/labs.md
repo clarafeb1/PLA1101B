@@ -2,7 +2,7 @@
 
 Check where your search load comes from
 ```
-index=_audit host=sh-* action=search info=completed
+index=_audit host=sh-* action=search info=completed earliest=-7d
 | stats sum(total_run_time) as seconds by [host | app | user | provenance]
 | sort - seconds
 ```
