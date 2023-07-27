@@ -16,7 +16,8 @@ index=_audit action=search info=granted provenance=scheduler host=<splunk_sh> ea
 ```
 ### Measure overlapping timeranges
 Are time windows overlapping with schedules?
-```| rest splunk_server=<splunk_sh> servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0"
+```
+| rest splunk_server=<splunk_sh> servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0"
        f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time
 | stats count by cron_schedule dispatch.earliest_time dispatch.latest_time
 ```
