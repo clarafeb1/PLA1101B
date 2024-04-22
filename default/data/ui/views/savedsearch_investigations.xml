@@ -1,6 +1,5 @@
 <form version="1.1" theme="light">
   <label>conf24 Saved Search Investigation</label>
-  <description>https://docs.google.com/presentation/d/1nJvG8EQDioJwbq6QdzFS0WI2SQko4u6UvAqGDBpXsOU/edit#slide=id.g12479ea691a_0_0</description>
   <fieldset submitButton="false">
     <input type="text" token="host">
       <label>Searchhead</label>
