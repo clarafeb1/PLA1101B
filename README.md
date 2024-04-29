@@ -5,6 +5,14 @@ Clara-Fication Workshop: Understanding the Expensive Bits in Your Splunk Environ
 - Bring your own Splunk environment
 - Having access to internal indexes (`_internal`, `_introspection`, `_audit`) will provide the most insight from this session
 
-# Want your Examples discussed on stage?
-Submit searches, job inspector screenshots, etc. through this form: [PLA117B Clara-fication Workshop](https://forms.gle/7QXkihW5FTNcsmNR8)
-These may get shown on stage for everyone to see, so please don't include any personal info or internal-only data.
+# Dashboards
+- Environment Investigations
+  - This dashboard will show information related to the entire deployment
+- Dashboard Investigations
+  - This dashboard will show information specific to dashboards and potential improvements
+- Saved Search Investigations
+  - This dashboard has information related to saved searches and potential improvements
+- Ad-Hoc Searches Investigations
+  - This dashboard will show information about inefficiencies in ad-hoc searches
+- Datamodel Investigations
+  - This dashboard will have helpful information around datamodel inefficiencies

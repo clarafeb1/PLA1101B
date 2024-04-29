@@ -1,0 +1,124 @@
+<form version="1.1" theme="light">
+  <label>conf24 Saved Search Investigation</label>
+  <fieldset submitButton="false">
+    <input type="text" token="host">
+      <label>Searchhead</label>
+      <default>sh*</default>
+    </input>
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        show scheduler info from MC - count of skipped searches/over time/reason for skips, plus errors from scheduler, plus scheduler run time, concurrency of scheduled reports, etc.<br/>
+        add expensive search info from MC
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Saved Search Execution Intervals</title>
+      <chart>
+        <search>
+          <query>index=_audit  action=search info=granted provenance=scheduler host=$host|s$ | timechart span=10s count
+  | eval second = strftime(_time, "%S"), minute = strftime(_time, "%M"), class = case(second=0 AND minute%5=0, "5m", second=0, "1m", true(), ""), count_{class} = count | fields - class count second minute</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <html>
+          Use a default allow_skew to let the scheduler spread out searches <p/>
+          Safe for virtually all cases: allow_skew=1m, randomize only the second for minimal deviations<p/>
+  Best distribution in most scenarios: allow_skew=5m <p/>
+  Alternative check: Monitoring Console → Resource Usage → Deployment → Indexers → 60m timerange → look for CPU patterns
+        </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Timeranges vs Schedule</title>
+      <table>
+        <search>
+          <query>| rest splunk_server=$host|s$ servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0" f=title f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time 
+| rename title as savedsearch_name 
+| fields cron_schedule dispatch.* splunk_server savedsearch_name 
+| stats dc(savedsearch_name) as searches by cron_schedule dispatch.earliest_time dispatch.latest_time splunk_server 
+| sort - searches
+| eval {splunk_server}=searches 
+| fields - searches splunk_server</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+          Check if the use case warrants overlaps <p/>
+  <li>If it does, question “overlap by how much?”</li>
+  <li>If it doesn’t, no need to search events multiple times</li>
+  Note that searching up to now with zero overlap at all may miss delayed data
+        </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>All Time Scheduled Searches</title>
+      <table>
+        <search>
+          <query>| rest splunk_server=$host$ /servicesNS/-/-/saved/searches search="is_scheduled=1" search="disabled=0" f=title f=author f=cron_schedule f=dispatch.earliest_time f=dispatch.latest_time f=eai:acl* f=updated f=qualifiedSearch f=next_scheduled_time f=splunk_server | search (dispatch.earliest_time="" OR dispatch.earliest_time="0")|stats values(author) as author values(cron_schedule) as cron_schedule values(dispatch.earliest_time) as earliest_time values(dispatch.latest_time) as latest_time values(eai:acl.owner) as owner values(updated) as updated values(qualifiedSearch) as qualifiedSearch values(next_scheduled_time) as next_scheduled_time values(splunk_server) as splunk_server by title eai:acl.app|rename eai:acl.app as app| regex qualifiedSearch="^\s*(search|tstats) " | rex field=qualifiedSearch "earliest=(?P&lt;earliestTime&gt;\S+)"|where isnull(earliestTime)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+      <html>
+        Some use cases might not hurt anything, such as running `rest` or `inputlookup` searches <br/>
+        Work with search owners to update time window <br/>
+        Use _index_earliest and _index_latest, if _time is needed to be All Time
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Scheduled Searches Without Defined Index</title>
+      <table>
+        <search>
+          <query>| rest splunk_server=$host$ servicesNS/-/-/saved/searches f=disabled f=title f=search f=eai:*|fields disabled search title splunk_server eai:acl.app|search disabled=0 search!="|*" | rex field=search "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;direct_index_searched&gt;[^\s,|']*)" max_match=0|where isnull(direct_index_searched)|rex field=search "`(?&lt;macro_searched&gt;[^`]+)`" max_match=0|rex field=search "eventtype\s?=\s?(?&lt;eventtype_searched&gt;[^\s]+)" max_match=0|mvexpand macro_searched|mvexpand eventtype_searched|join macro_searched splunk_server type=left [| rest splunk_server=$host$ servicesNS/-/-/admin/macros f=title f=definition| fields title definition splunk_server| rex field=definition "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;macro_index_searched&gt;[^\s|\"|']*)" max_match=0 | rex field=definition "eventtype\s?\=\s?\"?(?&lt;macro_defined_eventtype&gt;[^\s|\"|']+)" max_match=0 | rex field=definition "`(?&lt;nested_macro&gt;[^`]+)`" max_match=0 | mvexpand nested_macro| join nested_macro splunk_server type=left [| rest splunk_server=$host$ servicesNS/-/-/admin/macros f=title f=definition | fields title definition splunk_server | rex field=definition "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;nested_macro_index_searched&gt;[^\s|\"|']*)" max_match=0| rex field=definition "eventtype\s?\=\s?\"(?&lt;nested_macro_defined_eventtype&gt;[^\s]+)" max_match=0 |fields - definition|rename title as nested_macro]|eval macro_index_searched=case(isnotnull(macro_index_searched) AND isnotnull(nested_macro_index_searched), mvjoin(macro_index_searched,nested_macro_index_searched), isnotnull(macro_index_searched),macro_index_searched,1=1,nested_macro_index_searched)|eval macro_defined_eventtype=case(isnotnull(macro_defined_eventtype) AND isnotnull(nested_macro_defined_eventtype),mvjoin(macro_defined_eventtype,nested_macro_defined_eventtype), isnotnull(macro_defined_eventtype),macro_defined_eventtype,1=1,nested_macro_defined_eventtype)|fields title definition splunk_server macro_defined_eventtype macro_index_searched|stats values(*) as * by title definition splunk_server|rename title as macro_searched definition as macro_definition|join macro_defined_eventtype splunk_server type=left [|rest splunk_server=$host$ /servicesNS/-/-/saved/eventtypes f=search f=title|fields - author published id updated|stats values(*) as * by splunk_server title |rename title as macro_defined_eventtype splunk_server as splunk_server | rex field=search "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;macro_eventtype_index_searched&gt;[^\s|\"|']*)" max_match=0 |fields - search]]|join eventtype_searched splunk_server type=left [|rest splunk_server=$host$ /servicesNS/-/-/saved/eventtypes f=search f=title|fields - author published id updated|stats values(*) as * by splunk_server title |rename title as eventtype_searched search as eventtype_definition| rex field=eventtype_definition "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;eventtype_index_searched&gt;[^\s|\"|']*)" max_match=0 |rex field=eventtype_definition "eventtype\s?\=\s?\"?(?&lt;nested_eventtype&gt;[^\s|\"|']*)" max_match=0|mvexpand nested_eventtype|join nested_eventtype splunk_server type=left [|rest splunk_server=$host$ /servicesNS/-/-/saved/eventtypes f=search f=title|fields - author published id updated|stats values(*) as * by splunk_server title |rename title as nested_eventtype search as nested_eventtype_definition| rex field=nested_eventtype_definition "index((\s?\=\s?\"?)|(\sIN\s))(?&lt;nested_eventtype_index_searched&gt;[^\s|\"|']*)" max_match=0 ]|fields splunk_server eventtype_searched nested_eventtype_index_searched eventtype_index_searched]|stats values(*) as * by title search|where isnull(eventtype_index_searched)|where isnull(nested_eventtype_index_searched)|where isnull(macro_index_searched) |where isnull(macro_eventtype_index_searched)|fields splunk_server title search</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>High Memory/Long Running Searches</title>
+      <input type="text" token="mem_limit">
+        <label>Max Memory (MB)</label>
+      </input>
+      <input type="text" token="duration_limit">
+        <label>Max Runtime (s)</label>
+      </input>
+      <table>
+        <search>
+          <query>(index=_audit sourcetype=audittrail (total_run_time=* OR search=*)) OR (index=_introspection data.search_props.sid::* sourcetype=splunk_resource_usage) host IN ($host$) user!="splunk-system-user"| eval mem_used=round('data.mem_used',2), search_id=coalesce('data.search_props.sid',search_id)|search search_id="'scheduler*"| stats values(savedsearch_name) as search_name values(data.search_props.provenance) as provenance values(data.search_props.app) as app first(host) as host values(user) as user latest(info) as job_status max(mem_used) as "mem_used_mb" values(search) as raw_search values(total_run_time) as total_run_time values(api_et) as timepicker_start values(api_lt) as timepicker_end values(scan_count) as scan_count by search_id|convert ctime(timepicker_start) ctime(timepicker_end)|search total_run_time&gt;$duration_limit$ OR mem_used_mb&gt;$mem_limit$</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

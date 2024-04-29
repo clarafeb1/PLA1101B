@@ -1,0 +1,62 @@
+<form version="1.1" theme="light">
+  <label>conf24 Ad-Hoc Searches Investigation</label>
+  <fieldset submitButton="false">
+    <input type="text" token="host">
+      <label>Searchhead</label>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <table>
+        <title>Search Load</title>
+        <search>
+          <query>index=_audit action=search info=completed host=$host|s$ earliest=-24h 
+| rex field=provenance "^(?&lt;provenance_group&gt;[^:]+(:[^:]+)?)" 
+| stats dc(app) as apps dc(user) as users dc(search_id) as searches sum(total_run_time) as seconds by provenance_group host 
+| addinfo 
+| eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) 
+| fields - info_* 
+| sort - seconds</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+        Look for high concurrency numbers. I have other SPLs in the comments on this slide in the powerpoint that we might want to use instead or in conjunction with this.
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="text" token="runtime_threshold">
+        <label>Runtime Threshold (s)</label>
+        <default>600</default>
+      </input>
+      <input type="text" token="memory_threshold">
+        <label>Memory Threshold (MB)</label>
+        <default>4000</default>
+      </input>
+      <table>
+        <title>Long Running or High Memory Searches</title>
+        <search>
+          <query>(index=_audit sourcetype=audittrail action=search info=completed) OR (index=_introspection data.search_props.sid::* sourcetype=splunk_resource_usage) earliest=-7d host=$host|s$ user!="splunk-system-user"
+| eval mem_used=round('data.mem_used',2), search_id=replace(coalesce('data.search_props.sid',search_id), "^'|'$", "")|search search_id!="'scheduler*"
+| stats values(savedsearch_name) as search_name values(data.search_props.provenance) as provenance values(data.search_props.app) as app first(host) as host values(user) as user latest(info) as job_status max(mem_used) as "mem_used_mb" values(total_run_time) as total_run_time values(api_et) as timepicker_start values(api_lt) as timepicker_end values(scan_count) as scan_count values(search) as raw_search by search_id 
+| eval timepicker_start = strftime(timepicker_start, "%F %T"), timepicker_end = strftime(timepicker_end, "%F %T")
+| search total_run_time&gt;$runtime_threshold$ OR mem_used_mb&gt;$memory_threshold$</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+        Work with search owners to make searches more efficient<p/>
+Update searches to define indexes and use filters and appropriate time window<p/>
+Update searches to utilize tstats, if applicable
+      </html>
+    </panel>
+  </row>
+</form>
