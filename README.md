@@ -1,4 +1,4 @@
-# PLA1177B
+# PLA1101B
 Clara-Fication Workshop: Understanding the Expensive Bits in Your Splunk Environment
 
 # Prerequisites
@@ -10,9 +10,7 @@ Clara-Fication Workshop: Understanding the Expensive Bits in Your Splunk Environ
   - This dashboard will show information related to the entire deployment
 - Dashboard Investigations
   - This dashboard will show information specific to dashboards and potential improvements
-- Saved Search Investigations
-  - This dashboard has information related to saved searches and potential improvements
-- Ad-Hoc Searches Investigations
-  - This dashboard will show information about inefficiencies in ad-hoc searches
+- Search Investigations
+  - This dashboard has information related to ad-hoc and scheduled searches and potential improvements
 - Datamodel Investigations
   - This dashboard will have helpful information around datamodel inefficiencies
