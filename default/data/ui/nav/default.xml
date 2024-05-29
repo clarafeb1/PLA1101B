@@ -1,0 +1,8 @@
+<nav search_view="search" color="#5CC05C">
+  <view name="search" />
+  <view name="dashboards" />
+  <view name="conf24_environment_load_investigations" default="true" />
+  <view name="conf24_datamodel_investigation" />
+  <view name="conf24_dashboard_investigation" />
+  <view name="conf24_search_investigation" />
+</nav>
