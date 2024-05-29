@@ -18,7 +18,7 @@
       <default>*</default>
       <initialValue>*</initialValue>
     </input>
-    <input type="time" token="field1">
+    <input type="time" token="time">
       <label></label>
       <default>
         <earliest>-24h@h</earliest>
@@ -31,14 +31,14 @@
       <title>Most Expensive Dashboards</title>
       <table>
         <search>
-          <query>index=_audit host=$host|s$ action=search info=completed provenance=UI:Dashboard*  app=$app$
+          <query>index=_audit host IN ($host$) action=search info=completed provenance=UI:Dashboard*  app=$app|s$
 | stats dc(user) as users dc(search_id) as searches sum(total_run_time) as seconds by app provenance 
 | addinfo 
 | eval concurrency_factor = round(seconds / (info_max_time - info_min_time), 2) 
 | fields - info_* 
 | sort - seconds</query>
-          <earliest>$field1.earliest$</earliest>
-          <latest>$field1.latest$</latest>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -57,16 +57,46 @@ Reduce search runtimes:
   </row>
   <row>
     <panel>
+      <title>Unused Dashboards</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype=splunk_web_access method=GET app NOT user IN(splunk-system-user,-,UNDEFINED_USERNAME,admin,nobody,system,internal_monitoring) host IN ($host$) 
+| rex "GET /[^/]+/app/(?&lt;app&gt;[^/ ?]+)/(?&lt;view&gt;[^/ ?]+) " 
+| search app=$app$ 
+| stats count as views dc(user) as users max(_time) as _time by view app 
+| search NOT view IN ("dashboards","search","home","reports","alerts","datasets","inputs","job_manager","configuration") 
+| append 
+    [| rest splunk_server=$host$ servicesNS/-/-/data/ui/views f=disabled f=eai:* f=isVisible f=isDashboard f=rootNode f=title f=version 
+    | fields title eai:acl.app disabled isVisible isDashboard version updated 
+    | stats values(*) as * by title eai:acl.app 
+    | rename title as view eai:acl.app as app 
+    | search isDashboard=1 app=$app$] 
+| stats sum(views) as views sum(users) as users max(_time) as _time max(disabled) as disabled max(isVisible) as visible values(updated) as updated max(version) as version max(isDashboard) as dashboard by view app 
+| where isnull(views) 
+| fields - dashboard views users _time</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+        <p>Be sure to use a large enough time range.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <title>Dashboards with Concurrency Issues</title>
       <table>
         <search>
-          <query>index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host=$host|s$ (provenance=UI:Dashboard:*)
+          <query>index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host IN ($host$) (provenance=UI:Dashboard:*)
 | rex field=id "(?&lt;ssuser&gt;[^_]+)__" 
 | eval user = coalesce(user, username, ssuser), search_id = coalesce(savedsearch_id, id, "null") 
 | stats dc(search_id) as total_occurrences values(reason) as reason values(search_id) as search_ids by user provenance
 | rex field=provenance "UI:[d|D]ashboard:(?&lt;dashboard&gt;.*)"|join dashboard [|rest splunk_server=$host$ servicesNS/-/-/data/ui/views f=disabled f=eai:* f=isVisible f=isDashboard f=rootNode f=title f=version|fields title eai:acl.app isDashboard|stats values(*) as * by title eai:acl.app|rename title as dashboard eai:acl.app as app|search isDashboard=1 app=$app$|fields - isDashboard]|fields - dashboard|sort 0 - total_occurrences</query>
-          <earliest>$field1.earliest$</earliest>
-          <latest>$field1.latest$</latest>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -98,8 +128,8 @@ Reduce search count:
 | stats values(total_query) as total_query values(distinct_query) as query_count values(base_id) as base_id list(generating_spl) as generating_spl by title eai:appName author 
 | where total_query!=query_count 
 | rename eai:appName as app|sort 0 - total_query|where isnull(base_id)|fields - base_id</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="refresh.display">progressbar</option>
@@ -111,22 +141,6 @@ Reduce search count:
 <li>Utilize post processing</li>
 <li>Opt to selectively run searches based on tokens</li>
       </html>
-    </panel>
-  </row>
-  <row>
-    <panel>
-      <title>Unused Dashboards</title>
-      <table>
-        <search>
-          <query>index=_internal sourcetype=splunk_web_access method=GET TERM(app) NOT user IN(splunk-system-user,-,UNDEFINED_USERNAME,admin,nobody,system,internal_monitoring) host=$host$ | rex "GET /[^/]+/app/(?&lt;app&gt;[^/ ?]+)/(?&lt;view&gt;[^/ ?]+) "|search app=$app$|stats count as views dc(user) as users max(_time) as _time by view app
-|search NOT view IN ("dashboards","search","home","reports","alerts","datasets","inputs","job_manager","configuration")
-|append [|rest splunk_server=$host$ servicesNS/-/-/data/ui/views f=disabled f=eai:* f=isVisible f=isDashboard f=rootNode f=title f=version|fields title eai:acl.app disabled isVisible isDashboard version updated|stats values(*) as * by title eai:acl.app|rename title as view eai:acl.app as app|search isDashboard=1 app=$app$]|stats sum(views) as views sum(users) as users max(_time) as _time max(disabled) as disabled max(isVisible) as visible values(updated) as updated max(version) as version max(isDashboard) as dashboard by view app|where isnull(views)|fields - dashboard views users _time</query>
-          <earliest>$field1.earliest$</earliest>
-          <latest>$field1.latest$</latest>
-        </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
-      </table>
     </panel>
   </row>
 </form>
