@@ -1,0 +1,112 @@
+<form version="1.1" theme="light">
+  <label>conf24 Datamodel Investigation</label>
+  <fieldset submitButton="false">
+    <input type="text" token="host">
+      <label>Searchhead</label>
+      <default>sh*</default>
+    </input>
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Datamodels Accelerating on Multiple Hosts</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype=scheduler savedsearch_name="_ACCELERATE_DM_*" host IN ($host$) 
+| stats values(host) as SHs dc(host) as total_hosts by savedsearch_name 
+| sort - total_hosts</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+        <p>Pick one SH(C) to run the DMA, tell all others to reuse that acceleration via datamodels.conf:</p>
+<pre>[Authentication]
+acceleration.source_guid = &lt;GUID of the SH(C) running the DMA&gt;</pre>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Unused Datamodels</title>
+      <table>
+        <search>
+          <query>| rest splunk_server=$host$ /services/admin/summarization by_tstats=1 
+| eval summary.access_time = strftime('summary.access_time', "%F %T") 
+| table title summary.access_count summary.access_time summary.size 
+| eval size (GB, REST) = round('summary.size' / 1024 / 1024 / 1024, 3) 
+| rex field=title "tstats:(?&lt;name&gt;.+)"
+| join type=left name 
+    [ search index=_introspection component=summaries 
+    | dedup host data.name 
+    | stats sum(data.total_size) as size by data.name 
+    | eval size (GB, _introspection) = round(size / 1024, 3) 
+    | fields - size
+    | rename data.name as name]
+| fields - name summary.size</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Skipped Datamodels</title>
+      <table>
+        <search>
+          <query>index=_internal source=*scheduler.log _ACCELERATE_DM_***_ACCELERATE_ host IN ($host$) 
+| eval scheduled=strftime(scheduled_time,"%c") 
+| eval run_time=tostring(run_time,"duration") 
+| stats count as overall_count count(eval(status="skipped")) as skip_count latest(scheduled) as scheduled, values(host) as host, latest(run_time) as run_time latest(status) as status by savedsearch_name</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Datamodels with Macros</title>
+      <table>
+        <title>wanting to see what indexes are defined, if any, and which indexes need to be added</title>
+        <search>
+          <query>| rest splunk_server=$host$ servicesNS/-/-/datamodel/model f=title f=displayName f=disabled f=description f=acceleration 
+| spath input=description path=objects{}.constraints{}.search output=search 
+| spath input=acceleration path=enabled output=accelerated 
+| fields title displayName disabled accelerated search 
+| search search="*`cim_*" OR search="*index`*" OR search="*indexes`*" 
+| stats values(*) as * by title 
+| rex field=search max_match=0 "`(?&lt;macro&gt;[^`]+)`" 
+| rex field=search max_match=0 "tag=(?&lt;tag&gt;[^\s|\)]+)" 
+| eval tag=mvdedup(tag) 
+| eval macro=mvdedup(macro) 
+| join macro type=left 
+    [| rest splunk_server=$host$ /servicesNS/-/-/configs/conf-macros 
+    | rex field=id "(?&lt;macro&gt;[^\/]*)$" 
+    | stats values(definition) as macro_definition by macro 
+    | search macro=cim_* OR macro=*index*]</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="macro_definition">
+          <colorPalette type="map">{"()":#D41F1F,"(index=foo)":#D41F1F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>
