@@ -1,0 +1,193 @@
+<form version="1.1">
+  <label>conf24 Environment Investigations</label>
+  <fieldset submitButton="false">
+    <input type="text" token="host">
+      <label>Host - supports IN pattern</label>
+      <default>sh*,idx*</default>
+    </input>
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Setup outside SplunkCloud</title>
+      <html>
+        <p>Make sure you define the SH vs IDX distinction in the <a href="/manager/clarafication/data/macros/set_group?action=edit&amp;ns=clarafication&amp;uri=%2FservicesNS%2Fnobody%2Fclarafication%2Fdata%2Fmacros%2Fset_group" target="_blank">set_group</a> macro as is suitable for your environment.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Hostwide Load Average</title>
+      <chart>
+        <search>
+          <query>index=_introspection component=Hostwide host IN ($host$)
+| `set_group`
+| timechart bins=200 p90(data.normalized_load_avg_1min) by group</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">p90(load avg)</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <html>
+        If normally under 1, load is balanced well. If normally above 1, users might be having a bad time.
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Indexing Load</title>
+      <input type="dropdown" token="idx_split_by">
+        <label>Split By</label>
+        <choice value="consolidated">Consolidated</choice>
+        <choice value="processor">Processor</choice>
+        <default>consolidated</default>
+        <change>
+          <condition value="consolidated">
+            <set token="idx_split_by"></set>
+          </condition>
+          <condition>
+            <set token="idx_split_by">by processor</set>
+          </condition>
+        </change>
+      </input>
+      <chart>
+        <search>
+          <query>index=_internal host IN ($host$) source=*metrics.log* group=pipeline 
+| `set_group`
+| search group="IDX" 
+| timechart bins=200 per_second(cpu_seconds) as CPUs $idx_split_by$</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <html>
+        Usually this is a small fraction of the total number of CPUs in your indexers, making indexing work fairly irrelevant for overall load.
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Total Load on Indexers</title>
+      <chart>
+        <search>
+          <query>index=_introspection host IN ($host$) component=Hostwide 
+| `set_group`
+| search group="IDX" 
+| eval CPU = 'data.cpu_count'*('data.cpu_system_pct'+'data.cpu_user_pct')/100 
+| bin bins=200 _time 
+| stats avg(CPU) as CPU by _time host 
+| timechart bins=200 sum(CPU) as CPUs</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+      <html>
+        Compare the indexing load above with the total load here: Almost everything else is search load.
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search Load</title>
+      <input type="dropdown" token="sh_split_by">
+        <label>Split By</label>
+        <choice value="host">Host</choice>
+        <choice value="app">App</choice>
+        <choice value="user">User</choice>
+        <choice value="provenance">Provenance</choice>
+        <choice value="acceleration">Acceleration</choice>
+        <default>provenance</default>
+        <change>
+          <condition value="host">
+            <set token="sh_split_by">host</set>
+          </condition>
+          <condition value="app">
+            <set token="sh_split_by">app</set>
+          </condition>
+          <condition value="user">
+            <set token="sh_split_by">user</set>
+          </condition>
+          <condition value="provenance">
+            <set token="sh_split_by">provenance</set>
+          </condition>
+        </change>
+      </input>
+      <table>
+        <search>
+          <query>index=_audit host IN ($host$) action=search info=completed 
+| `set_group` 
+| search group="SH" 
+| eval acceleration = case(match(search_type, "_acceleration$"), savedsearch_name, provenance="summary_director", "summary_director", true(), "not an acceleration") 
+| stats sum(total_run_time) as seconds by $sh_split_by$ 
+| sort - seconds 
+| eventstats sum(seconds) as total_seconds 
+| eval perc_load=round((seconds/total_seconds)*100,2)."%" 
+| fields - total_seconds</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+      <html>
+        Play with the split-by dropdown to determine what aspects of your search load are responsible for the biggest fractions. Consider opening the search in a separate window for more flexibility (e.g. filter by most expensive provenance, then split by app or savedsearch_name).
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Large Lookups (no IN pattern for the host input)</title>
+      <input type="text" token="mb_limit">
+        <label>Lookup Size (MB)</label>
+        <default>100</default>
+      </input>
+      <table>
+        <search>
+          <query>index=_audit path="*/lookups/*" TERM(size) TERM(lookups) (TERM(action=update) OR TERM(action=created) OR TERM(action=modified) OR TERM(action=add)) NOT TERM(action=search) host IN ($host$)
+| convert mktime(modtime) AS modtime timeformat="%a %b %d %H:%M:%S %Y" 
+| stats latest(size) AS current_size by path host 
+| rex field=path "apps\/(?&lt;app&gt;[^\/]+)\/lookups\/(?&lt;file&gt;.*)" 
+| eval type="table" 
+| eval current_size_mb=round(current_size/1024/1024,3) 
+| search current_size_mb&gt;$mb_limit$ 
+| append 
+    [| rest splunk_server=$host$ servicesNS/-/-/server/introspection/kvstore/collectionstats f=data 
+    | mvexpand data 
+    | rex field=data "\{\"ns\"\:\"(?&lt;app&gt;\S*)\.(?&lt;file&gt;[^\"]+)\"\,\"size\"\:(?&lt;size&gt;\d+)" 
+    | eval path="app"."/".app."/".file 
+    | stats first(size) AS current_size by splunk_server app file path 
+    | rename splunk_server as host 
+    | eval type="kvstore"
+        ```seaching for lookups with size``` 
+    | eval current_size_mb=round(current_size/1024/1024,3) 
+    | search current_size_mb&gt;$mb_limit$] 
+| fields - current_size 
+| sort 0 - current_size_mb</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
