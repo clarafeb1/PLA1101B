@@ -1,4 +1,6 @@
 # Estimating Environment Load
+
+## All these are in the Environment Load dashboard, but you can do them manually of course
   
 1. Measure Load for SHs and IDXs
 ```
