@@ -155,14 +155,18 @@
   </row>
   <row>
     <panel>
-      <title>Large Lookups (no IN pattern for the host input)</title>
+      <title>Large Lookups</title>
+      <input type="text" token="host2">
+        <label>Host - no IN pattern</label>
+        <default>sh*</default>
+      </input>
       <input type="text" token="mb_limit">
         <label>Lookup Size (MB)</label>
         <default>100</default>
       </input>
       <table>
         <search>
-          <query>index=_audit path="*/lookups/*" TERM(size) TERM(lookups) (TERM(action=update) OR TERM(action=created) OR TERM(action=modified) OR TERM(action=add)) NOT TERM(action=search) host IN ($host$)
+          <query>index=_audit path="*/lookups/*" TERM(size) TERM(lookups) (TERM(action=update) OR TERM(action=created) OR TERM(action=modified) OR TERM(action=add)) NOT TERM(action=search) host=$host2$
 | convert mktime(modtime) AS modtime timeformat="%a %b %d %H:%M:%S %Y" 
 | stats latest(size) AS current_size by path host 
 | rex field=path "apps\/(?&lt;app&gt;[^\/]+)\/lookups\/(?&lt;file&gt;.*)" 
@@ -170,7 +174,7 @@
 | eval current_size_mb=round(current_size/1024/1024,3) 
 | search current_size_mb&gt;$mb_limit$ 
 | append 
-    [| rest splunk_server=$host$ servicesNS/-/-/server/introspection/kvstore/collectionstats f=data 
+    [| rest splunk_server=$host2$ servicesNS/-/-/server/introspection/kvstore/collectionstats f=data 
     | mvexpand data 
     | rex field=data "\{\"ns\"\:\"(?&lt;app&gt;\S*)\.(?&lt;file&gt;[^\"]+)\"\,\"size\"\:(?&lt;size&gt;\d+)" 
     | eval path="app"."/".app."/".file 
