@@ -51,7 +51,8 @@ acceleration.source_guid = &lt;GUID of the SH(C) running the DMA&gt;</pre>
     | eval size (GB, _introspection) = round(size / 1024, 3) 
     | fields - size
     | rename data.name as name]
-| fields - name summary.size</query>
+| fields - name summary.size
+| sort + summary.access_count</query>
           <earliest>-60m@m</earliest>
           <latest>now</latest>
         </search>
@@ -68,7 +69,8 @@ acceleration.source_guid = &lt;GUID of the SH(C) running the DMA&gt;</pre>
           <query>index=_internal source=*scheduler.log _ACCELERATE_DM_***_ACCELERATE_ host IN ($host$) 
 | eval scheduled=strftime(scheduled_time,"%c") 
 | eval run_time=tostring(run_time,"duration") 
-| stats count as overall_count count(eval(status="skipped")) as skip_count latest(scheduled) as scheduled, values(host) as host, latest(run_time) as run_time latest(status) as status by savedsearch_name</query>
+| stats count as overall_count count(eval(status="skipped")) as skip_count latest(scheduled) as scheduled, values(host) as host, latest(run_time) as run_time latest(status) as status by savedsearch_name
+| sort - skip_count</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
@@ -97,7 +99,8 @@ acceleration.source_guid = &lt;GUID of the SH(C) running the DMA&gt;</pre>
     [| rest splunk_server=$host$ /servicesNS/-/-/configs/conf-macros 
     | rex field=id "(?&lt;macro&gt;[^\/]*)$" 
     | stats values(definition) as macro_definition by macro 
-    | search macro=cim_* OR macro=*index*]</query>
+    | search macro=cim_* OR macro=*index*]
+| sort - accelerated + macro_definition</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
