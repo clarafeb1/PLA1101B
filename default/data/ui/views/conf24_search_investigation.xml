@@ -39,7 +39,7 @@
         <option name="refresh.display">progressbar</option>
       </table>
       <html>
-        Look for high concurrency numbers. I have other SPLs in the comments on this slide in the powerpoint that we might want to use instead or in conjunction with this.
+        Look for high concurrency numbers.
       </html>
     </panel>
   </row>
@@ -170,8 +170,10 @@ Update searches to utilize tstats, if applicable
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
-        <option name="drilldown">none</option>
-        <option name="refresh.display">progressbar</option>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank">search?q=%7C%20rest%20splunk_server%3D$host|s$%20servicesNS%2F-%2F-%2Fsaved%2Fsearches%20search%3D%22is_scheduled%3D1%22%20search%3D%22disabled%3D0%22%20f%3Dtitle%20f%3Dcron_schedule%20f%3Ddispatch.earliest_time%20f%3Ddispatch.latest_time%20f%3Deai%3Aacl%0A%7C%20rename%20title%20as%20savedsearch_name%20%0A%7C%20fields%20cron_schedule%20dispatch.*%20splunk_server%20eai%3Aacl.app%20savedsearch_name%0A%7C%20where%20cron_schedule%3D$row.cron_schedule|s$%20AND%20'dispatch.earliest_time'%3D$row.dispatch.earliest_time|s$%20AND%20'dispatch.latest_time'%3D$row.dispatch.latest_time|s$&amp;earliest=$time.earliest$&amp;latest=$time.latest$</link>
+        </drilldown>
       </table>
       <html>
           Check if the use case warrants overlaps <p/>
