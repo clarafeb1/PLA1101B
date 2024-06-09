@@ -90,11 +90,20 @@ Reduce search runtimes:
       <title>Dashboards with Concurrency Issues</title>
       <table>
         <search>
-          <query>index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host IN ($host$) (provenance=UI:Dashboard:*)
+          <query>index=_internal (sourcetype=splunkd OR sourcetype=scheduler) "The maximum number of concurrent" host IN ($host$) (provenance=UI:Dashboard:*) 
 | rex field=id "(?&lt;ssuser&gt;[^_]+)__" 
 | eval user = coalesce(user, username, ssuser), search_id = coalesce(savedsearch_id, id, "null") 
-| stats dc(search_id) as total_occurrences values(reason) as reason values(search_id) as search_ids by user provenance
-| rex field=provenance "UI:[d|D]ashboard:(?&lt;dashboard&gt;.*)"|join dashboard [|rest splunk_server=$host$ servicesNS/-/-/data/ui/views f=disabled f=eai:* f=isVisible f=isDashboard f=rootNode f=title f=version|fields title eai:acl.app isDashboard|stats values(*) as * by title eai:acl.app|rename title as dashboard eai:acl.app as app|search isDashboard=1 app=$app$|fields - isDashboard]|fields - dashboard|sort 0 - total_occurrences</query>
+| stats dc(search_id) as total_occurrences values(reason) as reason by user provenance 
+| rex field=provenance "UI:[d|D]ashboard:(?&lt;dashboard&gt;.*)" 
+| join dashboard 
+    [| rest splunk_server=$host$ servicesNS/-/-/data/ui/views f=disabled f=eai:* f=isVisible f=isDashboard f=rootNode f=title f=version 
+    | fields title eai:acl.app isDashboard 
+    | stats values(*) as * by title eai:acl.app 
+    | rename title as dashboard eai:acl.app as app 
+    | search isDashboard=1 app=$app$ 
+    | fields - isDashboard] 
+| fields - dashboard 
+| sort 0 - total_occurrences</query>
           <earliest>$time.earliest$</earliest>
           <latest>$time.latest$</latest>
         </search>
