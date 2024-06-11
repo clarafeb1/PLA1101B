@@ -4,6 +4,7 @@ Clara-Fication Workshop: Understanding the Expensive Bits in Your Splunk Environ
 # Prerequisites
 - Bring your own Splunk environment
 - Having access to internal indexes (`_internal`, `_introspection`, `_audit`) will provide the most insight from this session
+- Create dashboards manually by copypasta the XML into a Splunk Classic dashboard or install the app from https://splunkbase.splunk.com/app/7386
 
 # Dashboards
 - Environment Investigations
